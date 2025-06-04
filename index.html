@@ -10,10 +10,14 @@
       color: #eee;
       font-family: monospace;
       padding: 20px;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      margin: 0;
     }
     #output {
       background: #121212;
-      height: 300px;
+      flex-grow: 1;
       overflow-y: auto;
       padding: 10px;
       border: 1px solid #444;
@@ -21,35 +25,39 @@
       margin-bottom: 10px;
     }
     #inputCommand {
-      width: 80%;
+      width: 100%;
+      height: 100px;
       font-family: monospace;
       font-size: 16px;
-      padding: 5px;
+      padding: 10px;
       background: #2d2d2d;
       border: 1px solid #444;
       color: #eee;
+      resize: vertical;
     }
     #btnRun {
       font-size: 16px;
-      padding: 6px 12px;
+      padding: 8px 16px;
       background: #007acc;
       color: white;
       border: none;
       cursor: pointer;
+      margin-top: 10px;
+      align-self: flex-start;
     }
   </style>
 </head>
 <body>
   <h1>Python Shell Online</h1>
-  <div id="output"></div>
-  <input type="text" id="inputCommand" placeholder="Digite comando Python aqui" autofocus />
+  <div id="output">(Saída do shell aparecerá aqui)</div>
+  <textarea id="inputCommand" placeholder="Digite comando(s) Python aqui..."></textarea>
   <button id="btnRun">Executar</button>
 
   <script>
     let pyodide = null;
-    let outputDiv = document.getElementById('output');
-    let input = document.getElementById('inputCommand');
-    let btn = document.getElementById('btnRun');
+    const outputDiv = document.getElementById('output');
+    const input = document.getElementById('inputCommand');
+    const btn = document.getElementById('btnRun');
 
     async function iniciarPyodide() {
       outputDiv.textContent = "Carregando ambiente Python...";
@@ -57,10 +65,8 @@
       outputDiv.textContent = "Pronto! Digite comandos Python.";
     }
 
-    // Função para executar código e mostrar resultado no output
     async function executarCodigo(codigo) {
       try {
-        // Executa código com captura de stdout
         pyodide.runPython(`
 import sys
 import io
@@ -68,10 +74,8 @@ sys.stdout = io.StringIO()
 sys.stderr = sys.stdout
         `);
 
-        // Rodar o código do usuário
         await pyodide.runPythonAsync(codigo);
 
-        // Pega o que foi printado
         let saida = pyodide.runPython("sys.stdout.getvalue()");
         return saida || "(sem saída)";
       } catch (e) {
@@ -80,18 +84,19 @@ sys.stderr = sys.stdout
     }
 
     btn.onclick = async () => {
-      let comando = input.value.trim();
-      if (!comando) return;
-      outputDiv.textContent += "\n>>> " + comando + "\n";
+      const comandos = input.value.trim();
+      if (!comandos) return;
+      outputDiv.textContent += "\n>>> " + comandos + "\n";
       input.value = "";
-      let resultado = await executarCodigo(comando);
+      const resultado = await executarCodigo(comandos);
       outputDiv.textContent += resultado + "\n";
       outputDiv.scrollTop = outputDiv.scrollHeight;
     };
 
-    // Enter no input executa comando
-    input.addEventListener('keydown', async (e) => {
-      if (e.key === 'Enter') {
+    // Opcional: Executar ao apertar Ctrl+Enter para multi-linhas
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.ctrlKey) {
+        e.preventDefault();
         btn.click();
       }
     });
