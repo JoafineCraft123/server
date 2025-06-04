@@ -2,40 +2,104 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8" />
-<title>IDE Python Leve</title>
+<title>IDE Python Online com Pyodide + Terminal</title>
 <style>
+  /* Reset e estilo básico */
   body, html {
-    margin: 0; height: 100%; font-family: monospace; background: #1e1e1e; color: #eee;
-    display: flex; flex-direction: column;
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    font-family: monospace, monospace;
+    background: #1e1e1e; color: #eee;
+    display: flex;
+    overflow: hidden;
   }
-  #tabs {
-    display: flex; background: #333; padding: 5px;
+  #sidebar {
+    width: 250px;
+    background: #252526;
+    display: flex;
+    flex-direction: column;
   }
-  #tabs button {
-    background: #444; border: none; color: #eee; margin-right: 5px; padding: 5px 10px; cursor: pointer;
-  }
-  #tabs button.active {
+  #sidebar h2 {
+    margin: 0; padding: 10px;
     background: #007acc;
+    font-weight: normal;
   }
-  #main {
-    display: flex; flex-grow: 1; height: calc(100vh - 50px);
+  #file-list {
+    flex-grow: 1;
+    overflow-y: auto;
   }
-  #editor {
-    flex-grow: 1; border-right: 2px solid #007acc; height: 100%;
+  #file-list button {
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: #eee;
+    padding: 8px 10px;
+    text-align: left;
+    cursor: pointer;
+    border-left: 4px solid transparent;
   }
-  #terminal {
-    width: 300px; background: #121212; display: flex; flex-direction: column; height: 100%;
+  #file-list button.active {
+    background: #0e639c;
+    border-left: 4px solid #0a84ff;
+  }
+  #file-list button:hover:not(.active) {
+    background: #333;
+  }
+  #new-file-btn {
+    border: none;
+    background: #0a84ff;
+    color: white;
+    padding: 10px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  #main-area {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  #editor-container {
+    flex-grow: 1;
+    border-bottom: 4px solid #007acc;
+  }
+  #terminal-container {
+    height: 200px;
+    background: #121212;
+    display: flex;
+    flex-direction: column;
   }
   #terminal-output {
-    flex-grow: 1; padding: 10px; overflow-y: auto; white-space: pre-wrap;
+    flex-grow: 1;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 13px;
+    color: #eee;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    background: #121212;
   }
   #terminal-input {
-    border: none; background: #1e1e1e; color: #eee; font-family: monospace; font-size: 14px;
-    padding: 8px; outline: none;
+    border: none;
+    outline: none;
+    padding: 8px 10px;
+    font-family: monospace;
+    font-size: 14px;
+    color: #eee;
+    background: #1e1e1e;
+  }
+  #run-btn {
+    background: #0a84ff;
+    border: none;
+    color: white;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-weight: bold;
+    margin: 5px;
+    align-self: flex-start;
   }
 </style>
 
-<!-- Importar CodeMirror 6 básico (mínimo e leve) -->
+<!-- CodeMirror 6 básico -->
 <script type="module">
   import {EditorState} from "https://cdn.jsdelivr.net/npm/@codemirror/state@6.2.0/dist/index.js";
   import {EditorView, basicSetup} from "https://cdn.jsdelivr.net/npm/@codemirror/basic-setup@6.4.0/dist/index.js";
@@ -55,19 +119,21 @@
 </script>
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+
 </head>
 <body>
 
-<div id="tabs">
-  <button class="tab active" data-file="file1.py">file1.py</button>
-  <button class="tab" data-file="file2.py">file2.py</button>
-  <button id="new-tab">+</button>
+<div id="sidebar">
+  <h2>Projeto</h2>
+  <div id="file-list"></div>
+  <button id="new-file-btn">+ Novo Arquivo</button>
 </div>
 
-<div id="main">
-  <div id="editor"></div>
-  <div id="terminal">
-    <div id="terminal-output">(Terminal Python aqui)</div>
+<div id="main-area">
+  <div id="editor-container"></div>
+  <button id="run-btn" title="Rodar código da aba atual">▶️ Rodar Código</button>
+  <div id="terminal-container">
+    <div id="terminal-output">(Terminal Python)</div>
     <input id="terminal-input" placeholder="Digite comando Python e Enter" autocomplete="off" />
   </div>
 </div>
@@ -75,88 +141,116 @@
 <script>
   let pyodide = null;
   let editorViews = {};
-  let currentFile = 'file1.py';
+  let currentFile = null;
   let files = {
-    'file1.py': "# Código do file1\nprint('Olá mundo')",
-    'file2.py': "# Código do file2\nprint('Python online')"
+    "main.py": "# Seu código Python aqui\nprint('Olá mundo!')"
   };
 
+  const fileListEl = document.getElementById("file-list");
+  const editorContainer = document.getElementById("editor-container");
+  const termOutput = document.getElementById("terminal-output");
+  const termInput = document.getElementById("terminal-input");
+  const runBtn = document.getElementById("run-btn");
+  const newFileBtn = document.getElementById("new-file-btn");
+
   async function initPyodide() {
-    document.getElementById('terminal-output').textContent = 'Carregando Pyodide...';
-    pyodide = await loadPyodide();
-    document.getElementById('terminal-output').textContent += '\nPronto para comandos Python!';
+    termOutput.textContent = "Carregando Pyodide...";
+    pyodide = await loadPyodide({indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"});
+    termOutput.textContent += "\nPyodide carregado. Você pode usar comandos Python aqui.";
+    // Para permitir instalar pacotes via micropip
+    await pyodide.loadPackage('micropip');
   }
 
-  function loadFile(file) {
-    // Salvar código atual
-    if(editorViews[currentFile]) {
-      files[currentFile] = editorViews[currentFile].state.doc.toString();
-    }
-    currentFile = file;
-
-    // Limpa editor e cria novo
-    const editorContainer = document.getElementById('editor');
-    editorContainer.innerHTML = '';
-    editorViews[file] = window.createEditor(editorContainer, files[file]);
-
-    // Atualiza abas
-    document.querySelectorAll('#tabs button.tab').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.file === file);
+  function renderFileList() {
+    fileListEl.innerHTML = "";
+    Object.keys(files).forEach(filename => {
+      const btn = document.createElement("button");
+      btn.textContent = filename;
+      btn.className = "file-btn";
+      if(filename === currentFile) btn.classList.add("active");
+      btn.onclick = () => loadFile(filename);
+      fileListEl.appendChild(btn);
     });
   }
 
-  // Eventos abas
-  document.querySelectorAll('#tabs button.tab').forEach(btn => {
-    btn.onclick = () => loadFile(btn.dataset.file);
-  });
+  function loadFile(filename) {
+    if(currentFile && editorViews[currentFile]){
+      files[currentFile] = editorViews[currentFile].state.doc.toString();
+    }
+    currentFile = filename;
+    editorContainer.innerHTML = "";
+    editorViews[filename] = window.createEditor(editorContainer, files[filename]);
+    renderFileList();
+  }
 
-  // Nova aba
-  document.getElementById('new-tab').onclick = () => {
-    const newFileName = `file${Object.keys(files).length+1}.py`;
-    files[newFileName] = '# Novo arquivo\n';
-    const btn = document.createElement('button');
-    btn.className = 'tab';
-    btn.dataset.file = newFileName;
-    btn.textContent = newFileName;
-    btn.onclick = () => loadFile(newFileName);
-    document.getElementById('tabs').insertBefore(btn, document.getElementById('new-tab'));
-    loadFile(newFileName);
+  newFileBtn.onclick = () => {
+    const novoNome = prompt("Nome do novo arquivo (.py):");
+    if(novoNome && !files[novoNome]){
+      files[novoNome] = "# Novo arquivo\n";
+      loadFile(novoNome);
+    } else if (files[novoNome]) {
+      alert("Arquivo já existe!");
+    }
   };
 
   async function executarTerminal(comando) {
     try {
+      // Reset output capturando stdout e stderr
       pyodide.runPython(`
 import sys
 import io
 sys.stdout = io.StringIO()
 sys.stderr = sys.stdout
       `);
-      await pyodide.runPythonAsync(comando);
-      let saida = pyodide.runPython('sys.stdout.getvalue()');
-      return saida || '(sem saída)';
-    } catch (e) {
-      return 'Erro: ' + e;
+      let result = await pyodide.runPythonAsync(comando);
+      let saida = pyodide.runPython("sys.stdout.getvalue()");
+      if(saida.trim() === "" && result !== undefined && result !== null){
+        saida = result.toString();
+      }
+      return saida || "(sem saída)";
+    } catch (err) {
+      return "Erro: " + err;
     }
   }
 
-  const termInput = document.getElementById('terminal-input');
-  const termOutput = document.getElementById('terminal-output');
-
-  termInput.addEventListener('keydown', async e => {
-    if(e.key === 'Enter') {
+  termInput.addEventListener("keydown", async (e) => {
+    if(e.key === "Enter"){
       e.preventDefault();
       const cmd = termInput.value.trim();
       if(!cmd) return;
       termOutput.textContent += `\n>>> ${cmd}\n`;
-      termInput.value = '';
-      const res = await executarTerminal(cmd);
-      termOutput.textContent += res + '\n';
+      termInput.value = "";
+
+      // Suporte para micropip.install() para instalar pacotes
+      if(cmd.startsWith("import micropip") || cmd.includes("micropip.install")){
+        try {
+          // Executar normalmente
+          let res = await executarTerminal(cmd);
+          termOutput.textContent += res + "\n";
+        } catch(e) {
+          termOutput.textContent += "Erro na instalação do pacote: " + e + "\n";
+        }
+      } else {
+        let res = await executarTerminal(cmd);
+        termOutput.textContent += res + "\n";
+      }
       termOutput.scrollTop = termOutput.scrollHeight;
     }
   });
 
+  runBtn.onclick = async () => {
+    if(!currentFile) return;
+    // Salvar código da aba atual
+    files[currentFile] = editorViews[currentFile].state.doc.toString();
+    termOutput.textContent += `\n>>> Rodando ${currentFile}\n`;
+    let codigo = files[currentFile];
+    let res = await executarTerminal(codigo);
+    termOutput.textContent += res + "\n";
+    termOutput.scrollTop = termOutput.scrollHeight;
+  };
+
   // Inicializar
-  loadFile(currentFile);
+  loadFile("main.py");
   initPyodide();
 
 </script>
