@@ -2,87 +2,155 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Python Runner</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Python Online Runner with Pyodide</title>
 <style>
-  body { background:#1e1e1e; color:#eee; font-family: monospace; margin:0; padding:10px;}
-  textarea { width:100%; height:200px; background:#2d2d2d; color:#eee; border:none; padding:10px; font-size:16px; }
-  #output { background:#121212; padding:10px; height:150px; overflow:auto; white-space: pre-wrap; margin-top:10px;}
-  input, button { font-size: 16px; margin-top: 10px; padding: 8px; border-radius: 5px; border:none; }
-  input { width: 200px; }
-  button { background:#0a84ff; color:#fff; cursor:pointer; }
+  body {
+    background: #1e1e1e;
+    color: #eee;
+    font-family: monospace;
+    margin: 0; padding: 10px;
+  }
+  textarea, input {
+    width: 100%;
+    background: #2d2d2d;
+    border: none;
+    color: #eee;
+    padding: 10px;
+    font-size: 16px;
+    box-sizing: border-box;
+    font-family: monospace;
+    margin-bottom: 8px;
+  }
+  #output {
+    background: #121212;
+    padding: 10px;
+    height: 150px;
+    overflow: auto;
+    white-space: pre-wrap;
+    margin-top: 8px;
+    border-radius: 5px;
+  }
+  button {
+    background: #0a84ff;
+    border: none;
+    padding: 10px 15px;
+    color: white;
+    cursor: pointer;
+    font-size: 16px;
+    border-radius: 5px;
+    margin-right: 8px;
+  }
+  label {
+    font-weight: bold;
+  }
 </style>
 </head>
 <body>
 
-<h2>Python Online Runner</h2>
+<h2>Python Online Runner (Pyodide)</h2>
 
-<textarea id="code" spellcheck="false" placeholder="Write your Python code here...">print("Hello, world!")</textarea><br/>
-<button id="run">Run Code</button>
+<textarea id="editor" rows="10" spellcheck="false" placeholder="Write your Python code here...">print("Hello, world!")</textarea>
+<button id="run-btn">Run Code</button>
+<button id="reset-btn">Reset Environment</button>
 
 <div id="output">(Output will appear here)</div>
 
 <hr/>
 
-<label for="pkg">Install Python Package:</label><br/>
-<input type="text" id="pkg" placeholder="e.g. discord.py" />
-<button id="install">Install Package</button>
+<label for="package-input">Install Python Package (max 3 per session):</label>
+<input type="text" id="package-input" placeholder="e.g. numpy" />
+<button id="install-btn">Install Package</button>
 
-<div id="installStatus"></div>
-
+<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
 <script>
-  const backendUrl = 'https://seu-backend-python-aqui.com'; // ALTERE para o seu backend
+  let pyodide = null;
+  const MAX_CODE_SIZE = 5000;
+  const MAX_PACKAGES = 3;
+  const installedPackages = new Set();
 
-  const runBtn = document.getElementById('run');
-  const codeArea = document.getElementById('code');
-  const outputDiv = document.getElementById('output');
-
-  const installBtn = document.getElementById('install');
-  const pkgInput = document.getElementById('pkg');
-  const installStatus = document.getElementById('installStatus');
-
-  runBtn.onclick = async () => {
-    outputDiv.textContent = "Running...";
-    const code = codeArea.value;
-    try {
-      const res = await fetch(`${backendUrl}/run`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({code})
-      });
-      const data = await res.json();
-      if(data.error){
-        outputDiv.textContent = "Error:\n" + data.error;
-      } else {
-        outputDiv.textContent = data.output || "(no output)";
-      }
-    } catch(e) {
-      outputDiv.textContent = "Failed to connect to server.";
+  async function loadPyodideEnv() {
+    if (pyodide) {
+      await pyodide.terminate();
     }
-  };
+    document.getElementById('output').textContent = "Loading Python environment...";
+    pyodide = await loadPyodide({indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"});
+    installedPackages.clear();
+    document.getElementById('output').textContent = "Python environment loaded.";
+  }
 
-  installBtn.onclick = async () => {
-    const pkg = pkgInput.value.trim();
-    if(!pkg){
-      installStatus.textContent = "Enter a package name!";
+  async function runCode() {
+    if (!pyodide) {
+      alert("Python environment is still loading...");
       return;
     }
-    installStatus.textContent = "Installing...";
-    try {
-      const res = await fetch(`${backendUrl}/install`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({package: pkg})
-      });
-      const data = await res.json();
-      if(data.success){
-        installStatus.textContent = `Package "${pkg}" installed successfully!`;
-      } else {
-        installStatus.textContent = `Failed to install "${pkg}": ${data.message || 'unknown error'}`;
-      }
-    } catch(e) {
-      installStatus.textContent = "Failed to connect to server.";
+    const code = document.getElementById('editor').value;
+    if (code.length > MAX_CODE_SIZE) {
+      alert(`Code too large! Max allowed is ${MAX_CODE_SIZE} characters.`);
+      return;
     }
+    try {
+      // Redirect stdout and stderr
+      pyodide.runPython(`
+import sys
+import io
+sys.stdout = io.StringIO()
+sys.stderr = sys.stdout
+`);
+      await pyodide.runPythonAsync(code);
+      let output = pyodide.runPython("sys.stdout.getvalue()");
+      document.getElementById('output').textContent = output || "(no output)";
+    } catch (e) {
+      document.getElementById('output').textContent = "Error:\n" + e;
+    }
+  }
+
+  async function installPackage(pkgName) {
+    if (!pyodide) {
+      alert("Python environment is still loading...");
+      return;
+    }
+    if (installedPackages.size >= MAX_PACKAGES) {
+      alert(`Package install limit reached! Max allowed is ${MAX_PACKAGES} packages per session.`);
+      return;
+    }
+    if (!pkgName) {
+      alert("Enter a package name.");
+      return;
+    }
+    if(installedPackages.has(pkgName)) {
+      alert(`Package '${pkgName}' already installed.`);
+      return;
+    }
+    try {
+      document.getElementById('output').textContent = `Installing package '${pkgName}'...`;
+      await pyodide.loadPackage("micropip");
+      await pyodide.runPythonAsync(`import micropip; await micropip.install('${pkgName}')`);
+      installedPackages.add(pkgName);
+      document.getElementById('output').textContent = `Package '${pkgName}' installed successfully!`;
+    } catch (e) {
+      document.getElementById('output').textContent = `Failed to install '${pkgName}':\n${e}`;
+    }
+  }
+
+  async function resetPyodide() {
+    if (pyodide) {
+      await pyodide.terminate();
+      pyodide = null;
+    }
+    await loadPyodideEnv();
+  }
+
+  // Inicializa o Pyodide ao carregar a página
+  loadPyodideEnv();
+
+  // Botões
+  document.getElementById('run-btn').onclick = runCode;
+  document.getElementById('install-btn').onclick = () => {
+    const pkg = document.getElementById('package-input').value.trim();
+    installPackage(pkg);
   };
+  document.getElementById('reset-btn').onclick = resetPyodide;
 </script>
 
 </body>
