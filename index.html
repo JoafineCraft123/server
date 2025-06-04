@@ -4,7 +4,6 @@
 <meta charset="UTF-8" />
 <title>IDE Python Online com Pyodide + Terminal</title>
 <style>
-  /* Reset e estilo básico */
   body, html {
     margin: 0; padding: 0; height: 100%; width: 100%;
     font-family: monospace, monospace;
@@ -99,7 +98,6 @@
   }
 </style>
 
-<!-- CodeMirror 6 básico -->
 <script type="module">
   import {EditorState} from "https://cdn.jsdelivr.net/npm/@codemirror/state@6.2.0/dist/index.js";
   import {EditorView, basicSetup} from "https://cdn.jsdelivr.net/npm/@codemirror/basic-setup@6.4.0/dist/index.js";
@@ -131,10 +129,10 @@
 
 <div id="main-area">
   <div id="editor-container"></div>
-  <button id="run-btn" title="Rodar código da aba atual">▶️ Rodar Código</button>
+  <button id="run-btn" title="Rodar código da aba atual" disabled>Carregando Pyodide...</button>
   <div id="terminal-container">
     <div id="terminal-output">(Terminal Python)</div>
-    <input id="terminal-input" placeholder="Digite comando Python e Enter" autocomplete="off" />
+    <input id="terminal-input" placeholder="Digite comando Python e Enter" autocomplete="off" disabled />
   </div>
 </div>
 
@@ -153,12 +151,34 @@
   const runBtn = document.getElementById("run-btn");
   const newFileBtn = document.getElementById("new-file-btn");
 
+  function appendTerminal(text) {
+    termOutput.textContent += text + "\n";
+    termOutput.scrollTop = termOutput.scrollHeight;
+  }
+
   async function initPyodide() {
-    termOutput.textContent = "Carregando Pyodide...";
-    pyodide = await loadPyodide({indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"});
-    termOutput.textContent += "\nPyodide carregado. Você pode usar comandos Python aqui.";
-    // Para permitir instalar pacotes via micropip
-    await pyodide.loadPackage('micropip');
+    appendTerminal("Carregando Pyodide...");
+    pyodide = await loadPyodide({
+      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"
+    });
+    appendTerminal("Pyodide carregado.");
+
+    // Carregar micropip para instalar pacotes
+    await pyodide.loadPackage("micropip");
+    appendTerminal("Pacote micropip carregado.");
+
+    // Habilitar interface
+    runBtn.disabled = false;
+    termInput.disabled = false;
+    runBtn.textContent = "▶️ Rodar Código";
+
+    // Inicializar variável para captura de stdout e stderr
+    await pyodide.runPythonAsync(`
+import sys
+import io
+sys.stdout = io.StringIO()
+sys.stderr = sys.stdout
+`);
   }
 
   function renderFileList() {
@@ -167,14 +187,14 @@
       const btn = document.createElement("button");
       btn.textContent = filename;
       btn.className = "file-btn";
-      if(filename === currentFile) btn.classList.add("active");
+      if (filename === currentFile) btn.classList.add("active");
       btn.onclick = () => loadFile(filename);
       fileListEl.appendChild(btn);
     });
   }
 
   function loadFile(filename) {
-    if(currentFile && editorViews[currentFile]){
+    if (currentFile && editorViews[currentFile]) {
       files[currentFile] = editorViews[currentFile].state.doc.toString();
     }
     currentFile = filename;
@@ -185,7 +205,7 @@
 
   newFileBtn.onclick = () => {
     const novoNome = prompt("Nome do novo arquivo (.py):");
-    if(novoNome && !files[novoNome]){
+    if (novoNome && !files[novoNome]) {
       files[novoNome] = "# Novo arquivo\n";
       loadFile(novoNome);
     } else if (files[novoNome]) {
@@ -194,17 +214,23 @@
   };
 
   async function executarTerminal(comando) {
+    if (!pyodide) {
+      return "Pyodide não está carregado ainda.";
+    }
     try {
-      // Reset output capturando stdout e stderr
-      pyodide.runPython(`
+      // Limpar stdout para essa execução
+      await pyodide.runPythonAsync(`
 import sys
-import io
 sys.stdout = io.StringIO()
 sys.stderr = sys.stdout
-      `);
+`);
+
+      // Executar código
       let result = await pyodide.runPythonAsync(comando);
+
+      // Pegar saída capturada
       let saida = pyodide.runPython("sys.stdout.getvalue()");
-      if(saida.trim() === "" && result !== undefined && result !== null){
+      if (!saida.trim() && result !== undefined && result !== null) {
         saida = result.toString();
       }
       return saida || "(sem saída)";
@@ -214,45 +240,30 @@ sys.stderr = sys.stdout
   }
 
   termInput.addEventListener("keydown", async (e) => {
-    if(e.key === "Enter"){
+    if (e.key === "Enter") {
       e.preventDefault();
       const cmd = termInput.value.trim();
-      if(!cmd) return;
-      termOutput.textContent += `\n>>> ${cmd}\n`;
+      if (!cmd) return;
+      appendTerminal(`>>> ${cmd}`);
       termInput.value = "";
 
-      // Suporte para micropip.install() para instalar pacotes
-      if(cmd.startsWith("import micropip") || cmd.includes("micropip.install")){
-        try {
-          // Executar normalmente
-          let res = await executarTerminal(cmd);
-          termOutput.textContent += res + "\n";
-        } catch(e) {
-          termOutput.textContent += "Erro na instalação do pacote: " + e + "\n";
-        }
-      } else {
-        let res = await executarTerminal(cmd);
-        termOutput.textContent += res + "\n";
-      }
-      termOutput.scrollTop = termOutput.scrollHeight;
+      const output = await executarTerminal(cmd);
+      appendTerminal(output);
     }
   });
 
   runBtn.onclick = async () => {
-    if(!currentFile) return;
-    // Salvar código da aba atual
+    if (!currentFile) return;
     files[currentFile] = editorViews[currentFile].state.doc.toString();
-    termOutput.textContent += `\n>>> Rodando ${currentFile}\n`;
-    let codigo = files[currentFile];
-    let res = await executarTerminal(codigo);
-    termOutput.textContent += res + "\n";
-    termOutput.scrollTop = termOutput.scrollHeight;
+    appendTerminal(`>>> Rodando ${currentFile}`);
+    const codigo = files[currentFile];
+    const output = await executarTerminal(codigo);
+    appendTerminal(output);
   };
 
-  // Inicializar
+  // Inicializar editor e Pyodide ao carregar a página
   loadFile("main.py");
   initPyodide();
-
 </script>
 
 </body>
