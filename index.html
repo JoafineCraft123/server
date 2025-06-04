@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Editor Python Online Simplificado</title>
+<title>Simple Python Online Editor</title>
 <style>
   body {
     margin:0; padding:0; background:#1e1e1e; color:#eee; font-family: monospace;
     display: flex; flex-direction: column; height: 100vh;
   }
-  textarea {
+  #editor {
     flex-grow: 1;
     width: 100%;
     background:#2d2d2d;
@@ -30,6 +30,20 @@
     font-size: 14px;
     font-family: monospace;
   }
+  #cmd-section {
+    background:#252526;
+    padding: 10px;
+    display: none;
+  }
+  #cmd-input {
+    width: 100%;
+    background:#3c3c3c;
+    border:none;
+    color:#eee;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 16px;
+  }
   button {
     background:#0a84ff;
     border:none;
@@ -40,98 +54,111 @@
     cursor:pointer;
     border-radius: 4px;
   }
-  #controls {
-    display: flex;
-    justify-content: flex-start;
-    padding: 5px 10px;
+  #buttons {
     background:#252526;
-  }
-  input[type=text] {
-    background:#3c3c3c;
-    border:none;
-    color:#eee;
-    padding: 7px 10px;
-    border-radius: 4px;
-    margin-left: 5px;
-    flex-grow: 1;
-    font-family: monospace;
+    padding: 5px 10px;
   }
 </style>
 <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
 </head>
 <body>
 
-<div id="controls">
-  <button id="run">▶️ Rodar Código</button>
-  <button id="install">📦 Instalar Pacote</button>
-  <input type="text" id="package-name" placeholder="Nome do pacote para instalar (ex: numpy)" />
+<div id="buttons">
+  <button id="run-btn">Run</button>
+  <button id="cmd-btn">Cmd</button>
 </div>
 
-<textarea id="editor" spellcheck="false">
-print("Olá, Python Online!")
-</textarea>
+<textarea id="editor" spellcheck="false">print("Hello, Python!")</textarea>
 
-<div id="output">(Saída aparecerá aqui)</div>
+<div id="output">(Output will appear here)</div>
+
+<div id="cmd-section">
+  <input id="cmd-input" placeholder="Type Python command here and press Enter" />
+</div>
 
 <script>
   let pyodide = null;
 
-  async function loadPyodideAndPackages() {
-    document.getElementById('output').textContent = "Carregando Python...";
-    pyodide = await loadPyodide({
-      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"
-    });
-    document.getElementById('output').textContent = "Python carregado. Pronto para rodar.";
+  async function initPyodide() {
+    document.getElementById('output').textContent = "Loading Python...";
+    pyodide = await loadPyodide({indexURL:"https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"});
+    document.getElementById('output').textContent = "Python ready.";
   }
 
   async function runCode() {
     if (!pyodide) {
-      alert("Python ainda está carregando, espere...");
+      alert("Python is still loading, please wait...");
       return;
     }
     const code = document.getElementById('editor').value;
     try {
-      // Redireciona saída para capturar
       pyodide.runPython(`
 import sys
 import io
 sys.stdout = io.StringIO()
 sys.stderr = sys.stdout
 `);
-      let result = await pyodide.runPythonAsync(code);
+      await pyodide.runPythonAsync(code);
       let output = pyodide.runPython("sys.stdout.getvalue()");
-      if (!output.trim() && result !== undefined) output = result.toString();
-      document.getElementById('output').textContent = output || "(sem saída)";
+      document.getElementById('output').textContent = output || "(no output)";
     } catch (e) {
-      document.getElementById('output').textContent = "Erro:\n" + e;
+      document.getElementById('output').textContent = "Error:\n" + e;
     }
   }
 
-  async function installPackage() {
+  async function runCmd(command) {
     if (!pyodide) {
-      alert("Python ainda está carregando, espere...");
+      alert("Python is still loading, please wait...");
       return;
     }
-    const pkg = document.getElementById('package-name').value.trim();
-    if (!pkg) {
-      alert("Digite o nome do pacote para instalar.");
-      return;
-    }
-    document.getElementById('output').textContent = `Instalando pacote '${pkg}'...`;
+    if (!command.trim()) return;
     try {
-      await pyodide.loadPackage('micropip');
-      await pyodide.runPythonAsync(`import micropip; await micropip.install('${pkg}')`);
-      document.getElementById('output').textContent = `Pacote '${pkg}' instalado com sucesso!`;
-      document.getElementById('package-name').value = "";
+      pyodide.runPython(`
+import sys
+import io
+sys.stdout = io.StringIO()
+sys.stderr = sys.stdout
+`);
+      // For pip installs, use micropip
+      if (command.startsWith("pip ")) {
+        await pyodide.loadPackage("micropip");
+        let pkg = command.split(" ").slice(1).join(" ");
+        await pyodide.runPythonAsync(`import micropip; await micropip.install('${pkg}')`);
+        document.getElementById('output').textContent = `Package '${pkg}' installed successfully!`;
+      } else {
+        await pyodide.runPythonAsync(command);
+        let output = pyodide.runPython("sys.stdout.getvalue()");
+        document.getElementById('output').textContent = output || "(no output)";
+      }
     } catch (e) {
-      document.getElementById('output').textContent = `Erro ao instalar '${pkg}':\n${e}`;
+      document.getElementById('output').textContent = "Error:\n" + e;
     }
   }
 
-  document.getElementById('run').onclick = runCode;
-  document.getElementById('install').onclick = installPackage;
+  document.getElementById('run-btn').onclick = runCode;
 
-  loadPyodideAndPackages();
+  const cmdSection = document.getElementById('cmd-section');
+  const cmdBtn = document.getElementById('cmd-btn');
+  const cmdInput = document.getElementById('cmd-input');
+
+  cmdBtn.onclick = () => {
+    if (cmdSection.style.display === "none") {
+      cmdSection.style.display = "block";
+      cmdInput.focus();
+    } else {
+      cmdSection.style.display = "none";
+    }
+  };
+
+  cmdInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      runCmd(cmdInput.value);
+      cmdInput.value = "";
+    }
+  });
+
+  initPyodide();
 </script>
 
 </body>
