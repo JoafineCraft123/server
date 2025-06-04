@@ -2,42 +2,72 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Simple Python Runner</title>
+<title>Simple Python Online</title>
 <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
 <style>
-  body { font-family: monospace; padding: 20px; }
-  textarea { width: 100%; height: 200px; font-family: monospace; font-size: 14px; }
-  pre { background: #eee; padding: 10px; min-height: 100px; white-space: pre-wrap; }
-  button { margin-top: 10px; padding: 10px 15px; font-size: 16px; }
+  body {
+    font-family: monospace;
+    padding: 20px;
+    background: #f5f5f5;
+  }
+  textarea {
+    width: 100%;
+    height: 300px;
+    font-family: monospace;
+    font-size: 16px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    resize: vertical;
+  }
+  button {
+    margin-top: 10px;
+    padding: 10px 20px;
+    font-size: 16px;
+  }
+  pre {
+    background: #222;
+    color: #eee;
+    padding: 15px;
+    margin-top: 20px;
+    border-radius: 4px;
+    min-height: 150px;
+    white-space: pre-wrap;
+    overflow-x: auto;
+  }
 </style>
 </head>
 <body>
 
-<h2>Python Runner (Pyodide in-browser)</h2>
+<h1>Python Online (Runs in your browser)</h1>
 
-<textarea id="code">print("Hello World!")</textarea><br />
-<button id="runBtn">Run Code</button>
+<textarea id="code" spellcheck="false">
+# Type Python code here and click Run
+print("Hello, Python Online!")
+</textarea>
+<br />
+<button id="runBtn">Run</button>
 
-<h3>Output:</h3>
-<pre id="output">(no output)</pre>
+<pre id="output">(output will appear here)</pre>
 
 <script>
 let pyodideReady = false;
 let pyodide = null;
 
-async function loadPyodideAndPackages() {
+async function loadPyodideAndInit() {
   pyodide = await loadPyodide({
     indexURL : "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"
   });
   pyodideReady = true;
+  document.getElementById('output').textContent = 'Python runtime ready! Run your code.';
 }
 
-async function runCode() {
+async function runPythonCode() {
   if (!pyodideReady) {
-    alert("Python runtime is still loading, please wait...");
+    alert('Python is still loading, please wait...');
     return;
   }
-  const code = document.getElementById("code").value;
+  const code = document.getElementById('code').value;
   try {
     pyodide.runPython(`
 import sys
@@ -46,17 +76,17 @@ sys.stdout = io.StringIO()
 sys.stderr = sys.stdout
 `);
     await pyodide.runPythonAsync(code);
-    let output = pyodide.runPython("sys.stdout.getvalue()");
-    if (!output) output = "(no output)";
-    document.getElementById("output").textContent = output;
+    let output = pyodide.runPython('sys.stdout.getvalue()');
+    if (!output) output = '(no output)';
+    document.getElementById('output').textContent = output;
   } catch (err) {
-    document.getElementById("output").textContent = "Error:\n" + err;
+    document.getElementById('output').textContent = 'Error:\n' + err;
   }
 }
 
-document.getElementById("runBtn").onclick = runCode;
+document.getElementById('runBtn').addEventListener('click', runPythonCode);
 
-loadPyodideAndPackages();
+loadPyodideAndInit();
 </script>
 
 </body>
