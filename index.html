@@ -2,14 +2,17 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8" />
-<title>IDE Python Online com Pyodide + Terminal</title>
+<title>IDE Python Online Simples</title>
 <style>
+  * {
+    box-sizing: border-box;
+  }
   body, html {
-    margin: 0; padding: 0; height: 100%; width: 100%;
-    font-family: monospace, monospace;
-    background: #1e1e1e; color: #eee;
+    margin: 0; padding: 0; height: 100%;
     display: flex;
-    overflow: hidden;
+    font-family: monospace;
+    background: #1e1e1e;
+    color: #eee;
   }
   #sidebar {
     width: 250px;
@@ -18,7 +21,8 @@
     flex-direction: column;
   }
   #sidebar h2 {
-    margin: 0; padding: 10px;
+    margin: 0;
+    padding: 10px;
     background: #007acc;
     font-weight: normal;
   }
@@ -61,6 +65,20 @@
     flex-grow: 1;
     border-bottom: 4px solid #007acc;
   }
+  #controls {
+    padding: 8px;
+    background: #252526;
+    display: flex;
+    gap: 10px;
+  }
+  #run-btn, #save-btn {
+    background: #0a84ff;
+    border: none;
+    color: white;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-weight: bold;
+  }
   #terminal-container {
     height: 200px;
     background: #121212;
@@ -86,18 +104,9 @@
     color: #eee;
     background: #1e1e1e;
   }
-  #run-btn {
-    background: #0a84ff;
-    border: none;
-    color: white;
-    padding: 8px 16px;
-    cursor: pointer;
-    font-weight: bold;
-    margin: 5px;
-    align-self: flex-start;
-  }
 </style>
 
+<!-- CodeMirror 6 minimal setup -->
 <script type="module">
   import {EditorState} from "https://cdn.jsdelivr.net/npm/@codemirror/state@6.2.0/dist/index.js";
   import {EditorView, basicSetup} from "https://cdn.jsdelivr.net/npm/@codemirror/basic-setup@6.4.0/dist/index.js";
@@ -129,10 +138,13 @@
 
 <div id="main-area">
   <div id="editor-container"></div>
-  <button id="run-btn" title="Rodar código da aba atual" disabled>Carregando Pyodide...</button>
+  <div id="controls">
+    <button id="save-btn" disabled>💾 Salvar</button>
+    <button id="run-btn" disabled>▶️ Rodar Código</button>
+  </div>
   <div id="terminal-container">
     <div id="terminal-output">(Terminal Python)</div>
-    <input id="terminal-input" placeholder="Digite comando Python e Enter" autocomplete="off" disabled />
+    <input id="terminal-input" placeholder="Digite comando Python e pressione Enter" autocomplete="off" disabled />
   </div>
 </div>
 
@@ -149,6 +161,7 @@
   const termOutput = document.getElementById("terminal-output");
   const termInput = document.getElementById("terminal-input");
   const runBtn = document.getElementById("run-btn");
+  const saveBtn = document.getElementById("save-btn");
   const newFileBtn = document.getElementById("new-file-btn");
 
   function appendTerminal(text) {
@@ -162,17 +175,14 @@
       indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"
     });
     appendTerminal("Pyodide carregado.");
-
-    // Carregar micropip para instalar pacotes
     await pyodide.loadPackage("micropip");
     appendTerminal("Pacote micropip carregado.");
 
-    // Habilitar interface
     runBtn.disabled = false;
+    saveBtn.disabled = false;
     termInput.disabled = false;
-    runBtn.textContent = "▶️ Rodar Código";
 
-    // Inicializar variável para captura de stdout e stderr
+    // Inicializa captura stdout/err
     await pyodide.runPythonAsync(`
 import sys
 import io
@@ -195,6 +205,7 @@ sys.stderr = sys.stdout
 
   function loadFile(filename) {
     if (currentFile && editorViews[currentFile]) {
+      // Salva conteúdo atual no arquivo aberto antes de trocar
       files[currentFile] = editorViews[currentFile].state.doc.toString();
     }
     currentFile = filename;
@@ -204,13 +215,21 @@ sys.stderr = sys.stdout
   }
 
   newFileBtn.onclick = () => {
-    const novoNome = prompt("Nome do novo arquivo (.py):");
-    if (novoNome && !files[novoNome]) {
+    const novoNome = prompt("Nome do novo arquivo (ex: script.py):");
+    if (novoNome) {
+      if (files[novoNome]) {
+        alert("Arquivo já existe!");
+        return;
+      }
       files[novoNome] = "# Novo arquivo\n";
       loadFile(novoNome);
-    } else if (files[novoNome]) {
-      alert("Arquivo já existe!");
     }
+  };
+
+  saveBtn.onclick = () => {
+    if (!currentFile) return;
+    files[currentFile] = editorViews[currentFile].state.doc.toString();
+    appendTerminal(`Arquivo '${currentFile}' salvo!`);
   };
 
   async function executarTerminal(comando) {
@@ -218,17 +237,17 @@ sys.stderr = sys.stdout
       return "Pyodide não está carregado ainda.";
     }
     try {
-      // Limpar stdout para essa execução
+      // Limpa stdout para essa execução
       await pyodide.runPythonAsync(`
 import sys
+import io
 sys.stdout = io.StringIO()
 sys.stderr = sys.stdout
 `);
-
-      // Executar código
+      // Executa comando
       let result = await pyodide.runPythonAsync(comando);
 
-      // Pegar saída capturada
+      // Pega saída capturada
       let saida = pyodide.runPython("sys.stdout.getvalue()");
       if (!saida.trim() && result !== undefined && result !== null) {
         saida = result.toString();
@@ -255,13 +274,13 @@ sys.stderr = sys.stdout
   runBtn.onclick = async () => {
     if (!currentFile) return;
     files[currentFile] = editorViews[currentFile].state.doc.toString();
-    appendTerminal(`>>> Rodando ${currentFile}`);
+    appendTerminal(`>>> Rodando ${currentFile}...`);
     const codigo = files[currentFile];
     const output = await executarTerminal(codigo);
     appendTerminal(output);
   };
 
-  // Inicializar editor e Pyodide ao carregar a página
+  // Inicialização
   loadFile("main.py");
   initPyodide();
 </script>
