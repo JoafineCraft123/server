@@ -2,155 +2,61 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Python Online Runner with Pyodide</title>
+<title>Simple Python Runner</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
 <style>
-  body {
-    background: #1e1e1e;
-    color: #eee;
-    font-family: monospace;
-    margin: 0; padding: 10px;
-  }
-  textarea, input {
-    width: 100%;
-    background: #2d2d2d;
-    border: none;
-    color: #eee;
-    padding: 10px;
-    font-size: 16px;
-    box-sizing: border-box;
-    font-family: monospace;
-    margin-bottom: 8px;
-  }
-  #output {
-    background: #121212;
-    padding: 10px;
-    height: 150px;
-    overflow: auto;
-    white-space: pre-wrap;
-    margin-top: 8px;
-    border-radius: 5px;
-  }
-  button {
-    background: #0a84ff;
-    border: none;
-    padding: 10px 15px;
-    color: white;
-    cursor: pointer;
-    font-size: 16px;
-    border-radius: 5px;
-    margin-right: 8px;
-  }
-  label {
-    font-weight: bold;
-  }
+  body { font-family: monospace; padding: 20px; }
+  textarea { width: 100%; height: 200px; font-family: monospace; font-size: 14px; }
+  pre { background: #eee; padding: 10px; min-height: 100px; white-space: pre-wrap; }
+  button { margin-top: 10px; padding: 10px 15px; font-size: 16px; }
 </style>
 </head>
 <body>
 
-<h2>Python Online Runner (Pyodide)</h2>
+<h2>Python Runner (Pyodide in-browser)</h2>
 
-<textarea id="editor" rows="10" spellcheck="false" placeholder="Write your Python code here...">print("Hello, world!")</textarea>
-<button id="run-btn">Run Code</button>
-<button id="reset-btn">Reset Environment</button>
+<textarea id="code">print("Hello World!")</textarea><br />
+<button id="runBtn">Run Code</button>
 
-<div id="output">(Output will appear here)</div>
+<h3>Output:</h3>
+<pre id="output">(no output)</pre>
 
-<hr/>
-
-<label for="package-input">Install Python Package (max 3 per session):</label>
-<input type="text" id="package-input" placeholder="e.g. numpy" />
-<button id="install-btn">Install Package</button>
-
-<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
 <script>
-  let pyodide = null;
-  const MAX_CODE_SIZE = 5000;
-  const MAX_PACKAGES = 3;
-  const installedPackages = new Set();
+let pyodideReady = false;
+let pyodide = null;
 
-  async function loadPyodideEnv() {
-    if (pyodide) {
-      await pyodide.terminate();
-    }
-    document.getElementById('output').textContent = "Loading Python environment...";
-    pyodide = await loadPyodide({indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"});
-    installedPackages.clear();
-    document.getElementById('output').textContent = "Python environment loaded.";
+async function loadPyodideAndPackages() {
+  pyodide = await loadPyodide({
+    indexURL : "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"
+  });
+  pyodideReady = true;
+}
+
+async function runCode() {
+  if (!pyodideReady) {
+    alert("Python runtime is still loading, please wait...");
+    return;
   }
-
-  async function runCode() {
-    if (!pyodide) {
-      alert("Python environment is still loading...");
-      return;
-    }
-    const code = document.getElementById('editor').value;
-    if (code.length > MAX_CODE_SIZE) {
-      alert(`Code too large! Max allowed is ${MAX_CODE_SIZE} characters.`);
-      return;
-    }
-    try {
-      // Redirect stdout and stderr
-      pyodide.runPython(`
+  const code = document.getElementById("code").value;
+  try {
+    pyodide.runPython(`
 import sys
 import io
 sys.stdout = io.StringIO()
 sys.stderr = sys.stdout
 `);
-      await pyodide.runPythonAsync(code);
-      let output = pyodide.runPython("sys.stdout.getvalue()");
-      document.getElementById('output').textContent = output || "(no output)";
-    } catch (e) {
-      document.getElementById('output').textContent = "Error:\n" + e;
-    }
+    await pyodide.runPythonAsync(code);
+    let output = pyodide.runPython("sys.stdout.getvalue()");
+    if (!output) output = "(no output)";
+    document.getElementById("output").textContent = output;
+  } catch (err) {
+    document.getElementById("output").textContent = "Error:\n" + err;
   }
+}
 
-  async function installPackage(pkgName) {
-    if (!pyodide) {
-      alert("Python environment is still loading...");
-      return;
-    }
-    if (installedPackages.size >= MAX_PACKAGES) {
-      alert(`Package install limit reached! Max allowed is ${MAX_PACKAGES} packages per session.`);
-      return;
-    }
-    if (!pkgName) {
-      alert("Enter a package name.");
-      return;
-    }
-    if(installedPackages.has(pkgName)) {
-      alert(`Package '${pkgName}' already installed.`);
-      return;
-    }
-    try {
-      document.getElementById('output').textContent = `Installing package '${pkgName}'...`;
-      await pyodide.loadPackage("micropip");
-      await pyodide.runPythonAsync(`import micropip; await micropip.install('${pkgName}')`);
-      installedPackages.add(pkgName);
-      document.getElementById('output').textContent = `Package '${pkgName}' installed successfully!`;
-    } catch (e) {
-      document.getElementById('output').textContent = `Failed to install '${pkgName}':\n${e}`;
-    }
-  }
+document.getElementById("runBtn").onclick = runCode;
 
-  async function resetPyodide() {
-    if (pyodide) {
-      await pyodide.terminate();
-      pyodide = null;
-    }
-    await loadPyodideEnv();
-  }
-
-  // Inicializa o Pyodide ao carregar a página
-  loadPyodideEnv();
-
-  // Botões
-  document.getElementById('run-btn').onclick = runCode;
-  document.getElementById('install-btn').onclick = () => {
-    const pkg = document.getElementById('package-input').value.trim();
-    installPackage(pkg);
-  };
-  document.getElementById('reset-btn').onclick = resetPyodide;
+loadPyodideAndPackages();
 </script>
 
 </body>
