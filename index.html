@@ -1,57 +1,99 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <title>Python Online via Pyodide</title>
-  <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
-  <style>
-    body { background: #1e1e1e; color: white; font-family: monospace; padding: 20px; }
-    #editor { width: 100%; height: 300px; background: #2d2d2d; color: #fff; border: none; padding: 10px; font-size: 14px; resize: vertical; }
-    button { margin-top: 10px; padding: 10px; background: #007acc; border: none; color: white; cursor: pointer; }
-    #output { margin-top: 20px; background: #121212; padding: 10px; border: 1px solid #444; min-height: 100px; white-space: pre-wrap; }
-  </style>
-</head>
-<body>
-  <h1>Python Online 🐍</h1>
+<meta charset="UTF-8" />
+<title>Python Online - Editor + Terminal</title>
+<!-- CodeMirror 6 básica -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@6.65.7/theme/monokai.css" />
+<style>
+  body {
+    margin: 0; padding: 20px;
+    background: #1e1e1e;
+    color: white;
+    font-family: monospace;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  #editor {
+    flex: 1 1 auto;
+    border: 1px solid #333;
+    margin-bottom: 10px;
+  }
+  #terminal {
+    flex: 0 0 200px;
+    background: #121212;
+    border: 1px solid #333;
+    padding: 10px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-size: 14px;
+  }
+  button {
+    background: #007acc;
+    border: none;
+    padding: 10px 20px;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    margin-bottom: 10px;
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+<script type="module">
+// Importando CodeMirror 6 via CDN
+import {EditorView, basicSetup} from "https://cdn.jsdelivr.net/npm/@codemirror/basic-setup@0.19.1/dist/index.min.js";
+import {python} from "https://cdn.jsdelivr.net/npm/@codemirror/lang-python@0.19.1/dist/index.min.js";
+import {oneDark} from "https://cdn.jsdelivr.net/npm/@codemirror/theme-one-dark@0.19.5/dist/index.min.js";
 
-  <textarea id="editor" spellcheck="false">print("Olá mundo!")</textarea><br>
-  <button onclick="executarPython()">▶ Executar</button>
+window.addEventListener('load', async () => {
+  // Inicializar Pyodide
+  const pyodide = await loadPyodide();
 
-  <div id="output">Carregando Python...</div>
+  // Editor CodeMirror
+  const editor = new EditorView({
+    doc: `print("Olá do Pyodide com CodeMirror!")`,
+    extensions: [basicSetup, python(), oneDark],
+    parent: document.getElementById("editor")
+  });
 
-  <script>
-    let pyodide = null;
+  const terminal = document.getElementById("terminal");
 
-    async function iniciarPyodide() {
-      pyodide = await loadPyodide();
-      document.getElementById("output").innerText = "Pronto para rodar Python.";
-    }
+  // Função para executar código Python e capturar saída
+  async function executarPython() {
+    terminal.textContent = "Executando...\n";
 
-    async function executarPython() {
-      const codigo = document.getElementById("editor").value;
-      const outputDiv = document.getElementById("output");
-
-      try {
-        // Redirecionar stdout e stderr
-        pyodide.runPython(`
+    try {
+      // Reset stdout e stderr
+      pyodide.runPython(`
 import sys
 import io
 sys.stdout = io.StringIO()
 sys.stderr = sys.stdout
-        `);
+      `);
 
-        // Executar o código do usuário
-        await pyodide.runPythonAsync(codigo);
+      // Pega código do editor
+      const codigo = editor.state.doc.toString();
 
-        // Capturar a saída
-        const output = pyodide.runPython("sys.stdout.getvalue()");
-        outputDiv.innerText = output || "(sem saída)";
-      } catch (erro) {
-        outputDiv.innerText = "Erro:\n" + erro;
-      }
+      // Executa código
+      await pyodide.runPythonAsync(codigo);
+
+      // Pega saída do print
+      const output = pyodide.runPython("sys.stdout.getvalue()");
+
+      terminal.textContent = output || "(sem saída)";
+    } catch (e) {
+      terminal.textContent = "Erro:\n" + e;
     }
+  }
 
-    iniciarPyodide();
-  </script>
+  document.getElementById("runBtn").onclick = executarPython;
+});
+</script>
+</head>
+<body>
+  <button id="runBtn">▶ Executar Código Python</button>
+  <div id="editor" style="height: 60vh;"></div>
+  <div id="terminal">(Saída aparecerá aqui)</div>
 </body>
 </html>
