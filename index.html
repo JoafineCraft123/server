@@ -1,165 +1,77 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<title>Simple Python Online Editor</title>
-<style>
-  body {
-    margin:0; padding:0; background:#1e1e1e; color:#eee; font-family: monospace;
-    display: flex; flex-direction: column; height: 100vh;
-  }
-  #editor {
-    flex-grow: 1;
-    width: 100%;
-    background:#2d2d2d;
-    color:#eee;
-    border: none;
-    padding: 10px;
-    font-size: 16px;
-    resize: none;
-    outline: none;
-    box-sizing: border-box;
-  }
-  #output {
-    background:#121212;
-    color:#0f0;
-    padding: 10px;
-    height: 150px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    font-size: 14px;
-    font-family: monospace;
-  }
-  #cmd-section {
-    background:#252526;
-    padding: 10px;
-    display: none;
-  }
-  #cmd-input {
-    width: 100%;
-    background:#3c3c3c;
-    border:none;
-    color:#eee;
-    padding: 8px;
-    font-family: monospace;
-    font-size: 16px;
-  }
-  button {
-    background:#0a84ff;
-    border:none;
-    padding: 10px 15px;
-    margin: 5px;
-    color:#fff;
-    font-weight: bold;
-    cursor:pointer;
-    border-radius: 4px;
-  }
-  #buttons {
-    background:#252526;
-    padding: 5px 10px;
-  }
-</style>
-<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
-</head>
-<body>
+let pyodide = null;
+let installedPackages = new Set();
+const MAX_CODE_SIZE = 5000; // máximo de caracteres no código
+const MAX_PACKAGES = 3;
 
-<div id="buttons">
-  <button id="run-btn">Run</button>
-  <button id="cmd-btn">Cmd</button>
-</div>
+async function loadPyodideEnv() {
+  if (pyodide) await pyodide.terminate(); // libera memória
+  pyodide = await loadPyodide({indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"});
+  installedPackages.clear();
+}
 
-<textarea id="editor" spellcheck="false">print("Hello, Python!")</textarea>
-
-<div id="output">(Output will appear here)</div>
-
-<div id="cmd-section">
-  <input id="cmd-input" placeholder="Type Python command here and press Enter" />
-</div>
-
-<script>
-  let pyodide = null;
-
-  async function initPyodide() {
-    document.getElementById('output').textContent = "Loading Python...";
-    pyodide = await loadPyodide({indexURL:"https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"});
-    document.getElementById('output').textContent = "Python ready.";
+async function runCode() {
+  if (!pyodide) {
+    alert("Python is still loading...");
+    return;
   }
-
-  async function runCode() {
-    if (!pyodide) {
-      alert("Python is still loading, please wait...");
-      return;
-    }
-    const code = document.getElementById('editor').value;
-    try {
-      pyodide.runPython(`
+  const code = document.getElementById('editor').value;
+  if(code.length > MAX_CODE_SIZE){
+    alert(`Code too large! Max allowed is ${MAX_CODE_SIZE} characters.`);
+    return;
+  }
+  try {
+    pyodide.runPython(`
 import sys
 import io
 sys.stdout = io.StringIO()
 sys.stderr = sys.stdout
 `);
-      await pyodide.runPythonAsync(code);
-      let output = pyodide.runPython("sys.stdout.getvalue()");
-      document.getElementById('output').textContent = output || "(no output)";
-    } catch (e) {
-      document.getElementById('output').textContent = "Error:\n" + e;
-    }
+    await pyodide.runPythonAsync(code);
+    let output = pyodide.runPython("sys.stdout.getvalue()");
+    document.getElementById('output').textContent = output || "(no output)";
+  } catch(e) {
+    document.getElementById('output').textContent = "Error:\n" + e;
   }
+}
 
-  async function runCmd(command) {
-    if (!pyodide) {
-      alert("Python is still loading, please wait...");
-      return;
-    }
-    if (!command.trim()) return;
-    try {
-      pyodide.runPython(`
-import sys
-import io
-sys.stdout = io.StringIO()
-sys.stderr = sys.stdout
-`);
-      // For pip installs, use micropip
-      if (command.startsWith("pip ")) {
-        await pyodide.loadPackage("micropip");
-        let pkg = command.split(" ").slice(1).join(" ");
-        await pyodide.runPythonAsync(`import micropip; await micropip.install('${pkg}')`);
-        document.getElementById('output').textContent = `Package '${pkg}' installed successfully!`;
-      } else {
-        await pyodide.runPythonAsync(command);
-        let output = pyodide.runPython("sys.stdout.getvalue()");
-        document.getElementById('output').textContent = output || "(no output)";
-      }
-    } catch (e) {
-      document.getElementById('output').textContent = "Error:\n" + e;
-    }
+async function installPackage(pkgName) {
+  if (!pyodide) {
+    alert("Python is still loading...");
+    return;
   }
+  if(installedPackages.size >= MAX_PACKAGES){
+    alert(`Package install limit reached! Max allowed is ${MAX_PACKAGES} packages per session.`);
+    return;
+  }
+  if(!pkgName){
+    alert("Enter a package name.");
+    return;
+  }
+  try {
+    await pyodide.loadPackage("micropip");
+    await pyodide.runPythonAsync(`import micropip; await micropip.install('${pkgName}')`);
+    installedPackages.add(pkgName);
+    document.getElementById('output').textContent = `Package '${pkgName}' installed successfully!`;
+  } catch(e) {
+    document.getElementById('output').textContent = `Failed to install '${pkgName}':\n${e}`;
+  }
+}
 
-  document.getElementById('run-btn').onclick = runCode;
+async function resetPyodide() {
+  if(pyodide) await pyodide.terminate();
+  document.getElementById('output').textContent = "Resetting Python environment...";
+  await loadPyodideEnv();
+  document.getElementById('output').textContent = "Python environment reset.";
+}
 
-  const cmdSection = document.getElementById('cmd-section');
-  const cmdBtn = document.getElementById('cmd-btn');
-  const cmdInput = document.getElementById('cmd-input');
+// Chame loadPyodideEnv() ao carregar a página
 
-  cmdBtn.onclick = () => {
-    if (cmdSection.style.display === "none") {
-      cmdSection.style.display = "block";
-      cmdInput.focus();
-    } else {
-      cmdSection.style.display = "none";
-    }
-  };
-
-  cmdInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      runCmd(cmdInput.value);
-      cmdInput.value = "";
-    }
-  });
-
-  initPyodide();
-</script>
-
-</body>
-</html>
+// Exemplo para vincular botões:
+/*
+document.getElementById('run-btn').onclick = runCode;
+document.getElementById('install-btn').onclick = () => {
+  const pkg = document.getElementById('package-input').value.trim();
+  installPackage(pkg);
+};
+document.getElementById('reset-btn').onclick = resetPyodide;
+*/
