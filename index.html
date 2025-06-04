@@ -2,69 +2,56 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Editor Python Online</title>
+  <title>Python Online via Pyodide</title>
   <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
   <style>
-    body {
-      font-family: monospace;
-      background: #1e1e1e;
-      color: #fff;
-      padding: 20px;
-    }
-    textarea {
-      width: 100%;
-      height: 300px;
-      background: #252526;
-      color: #d4d4d4;
-      border: none;
-      padding: 10px;
-      font-size: 14px;
-      resize: vertical;
-    }
-    button {
-      margin-top: 10px;
-      padding: 10px 20px;
-      background: #0e639c;
-      border: none;
-      color: white;
-      font-weight: bold;
-      cursor: pointer;
-    }
-    pre {
-      background: #1e1e1e;
-      padding: 10px;
-      border: 1px solid #444;
-      white-space: pre-wrap;
-    }
+    body { background: #1e1e1e; color: white; font-family: monospace; padding: 20px; }
+    #editor { width: 100%; height: 300px; background: #2d2d2d; color: #fff; border: none; padding: 10px; font-size: 14px; resize: vertical; }
+    button { margin-top: 10px; padding: 10px; background: #007acc; border: none; color: white; cursor: pointer; }
+    #output { margin-top: 20px; background: #121212; padding: 10px; border: 1px solid #444; min-height: 100px; white-space: pre-wrap; }
   </style>
 </head>
 <body>
-  <h1>Python no Navegador 🐍</h1>
+  <h1>Python Online 🐍</h1>
 
-  <textarea id="editor">print("Olá, mundo!")</textarea><br>
-  <button onclick="executarCodigo()">Executar Código</button>
+  <textarea id="editor" spellcheck="false">print("Olá mundo!")</textarea><br>
+  <button onclick="executarPython()">▶ Executar</button>
 
-  <h3>Saída:</h3>
-  <pre id="saida">...</pre>
+  <div id="output">Carregando Python...</div>
 
   <script>
     let pyodide = null;
 
-    async function carregarPyodide() {
+    async function iniciarPyodide() {
       pyodide = await loadPyodide();
+      document.getElementById("output").innerText = "Pronto para rodar Python.";
     }
 
-    async function executarCodigo() {
+    async function executarPython() {
       const codigo = document.getElementById("editor").value;
+      const outputDiv = document.getElementById("output");
+
       try {
-        const resultado = await pyodide.runPythonAsync(codigo);
-        document.getElementById("saida").innerText = resultado ?? "(sem saída)";
-      } catch (err) {
-        document.getElementById("saida").innerText = "Erro: " + err;
+        // Redirecionar stdout e stderr
+        pyodide.runPython(`
+import sys
+import io
+sys.stdout = io.StringIO()
+sys.stderr = sys.stdout
+        `);
+
+        // Executar o código do usuário
+        await pyodide.runPythonAsync(codigo);
+
+        // Capturar a saída
+        const output = pyodide.runPython("sys.stdout.getvalue()");
+        outputDiv.innerText = output || "(sem saída)";
+      } catch (erro) {
+        outputDiv.innerText = "Erro:\n" + erro;
       }
     }
 
-    carregarPyodide();
+    iniciarPyodide();
   </script>
 </body>
 </html>
